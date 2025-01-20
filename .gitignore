@@ -11,3 +11,7 @@
 /data_synthesis/TimeGAN/.ipynb_checkpoints/
 /data_synthesis/TimeGAN/metrics/.ipynb_checkpoints/
 /data_synthesis/timegan-pytorch/run.sh
+__pycache__
+.vscode
+*.pth
+work_dir
