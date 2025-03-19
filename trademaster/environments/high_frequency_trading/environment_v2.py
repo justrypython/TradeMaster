@@ -151,7 +151,7 @@ class MyHighFrequencyTradingEnvironment(Environments):
         return value * (1 + self.transaction_cost_pct), actual_changed_position
 
     def calculate_value(self, price_information, position):
-        return price_information["bid1_price"] * position
+        return price_information["bid_price_1"] * position
 
     def calculate_avaliable_action(self, price_information):
         # 这块计算跟粒度有关系 修改粒度时应该注意
