@@ -42,11 +42,11 @@ class MyHighFrequencyTradingDataset(CustomDataset):
             "host": "172.17.0.4",
             "port": "5432",
         }
-        
+
         if test_dynamic!=-1:
             self.test_dynamic_paths=[]
             # data = pd.read_csv(self.test_dynamic_path)
-            data = get_df('m2505', self.db_params)
+            data, md5 = get_df('m2505', self.db_params)
             data = data.reset_index()
             data = data.loc[data['label'] == test_dynamic, :]
             if data.empty:

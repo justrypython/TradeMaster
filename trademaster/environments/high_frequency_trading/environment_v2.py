@@ -18,6 +18,8 @@ from pathlib import Path
 import pickle
 import os.path as osp
 
+from tqdm import tqdm
+
 ROOT = str(Path(__file__).resolve().parents[2])
 sys.path.append(ROOT)
 
@@ -68,7 +70,7 @@ class MyHighFrequencyTradingEnvironment(Environments):
             "port": "5432",
         }
 
-        self.df = get_df('m2505', self.db_params)
+        self.df, self.dp_md5 = get_df('m2505', self.db_params)
 
         self.action_space = spaces.Discrete(get_attr(self.dataset, "num_action", 11))
         self.observation_space = spaces.Box(
@@ -514,67 +516,91 @@ class MyHighFrequencyTradingEnvironment(Environments):
 
         # init dp solution
         price_information = self.df.iloc[0]
-        dp = [[0] * self.action_dim for i in range(len(self.df))]
-        for i in range(self.action_dim):
-            position_changed = (0 - i) / scale_factor * self.max_holding_number
-            if position_changed > 0:
-                # 要卖
-                dp[0][i] = sell_value(price_information, position_changed)
-            else:
-                # 要买
-                dp[0][i] = -buy_value(price_information, -position_changed)
 
-        for i in range(1, len(self.df)):
-            price_information = self.df.iloc[i]
-            for j in range(self.action_dim):
-                # j是现在的选择
-                previous_dp = []
-                for k in range(self.action_dim):
-                    # k是过去的选择
-                    position_changed = (k - j) / scale_factor * self.max_holding_number
+        dp_file = os.path.join("datas", "%s.pkl"%self.dp_md5)
+        if os.path.exists(dp_file):
+            # action_dict = {
+            #     "action_list": action_list,
+            #     "transaction_cost_pct": self.transaction_cost_pct,
+            #     "action_dim": self.action_dim,
+            #     "max_holding_number": self.max_holding_number
+            # }
+            with open(dp_file, 'rb') as f:
+                action_dict = pickle.load(f)
+            action_list = action_dict['action_list']
+            assert self.transaction_cost_pct == action_dict['transaction_cost_pct']
+            assert self.action_dim == action_dict['action_dim']
+            assert self.max_holding_number == action_dict['max_holding_number']
+        else:
+            dp = [[0] * self.action_dim for i in range(len(self.df))]
+            for i in range(self.action_dim):
+                position_changed = (0 - i) / scale_factor * self.max_holding_number
+                if position_changed > 0:
+                    # 要卖
+                    dp[0][i] = sell_value(price_information, position_changed)
+                else:
+                    # 要买
+                    dp[0][i] = -buy_value(price_information, -position_changed)
+            for i in tqdm(range(1, len(self.df))):
+                price_information = self.df.iloc[i]
+                for j in range(self.action_dim):
+                    # j是现在的选择
+                    previous_dp = []
+                    for k in range(self.action_dim):
+                        # k是过去的选择
+                        position_changed = (k - j) / scale_factor * self.max_holding_number
+                        if position_changed > 0:
+                            previous_dp.append(
+                                dp[i - 1][k]
+                                + sell_value(price_information, position_changed)
+                            )
+                        else:
+                            previous_dp.append(
+                                dp[i - 1][k]
+                                - buy_value(price_information, -position_changed)
+                            )
+                    dp[i][j] = max(previous_dp)
+            # 现在开始倒着取动作
+            # 最后一个动作是清仓 看倒数第二个动作是怎么来的
+            d1_dp_update = []
+            for k in range(self.action_dim):
+                position_changed = (k - 0) / scale_factor * self.max_holding_number
+                d1_dp_update.append(
+                    dp[len(self.df) - 2][k]
+                    + sell_value(price_information, position_changed)
+                )
+            last_action = d1_dp_update.index(dp[len(self.df) - 1][0])
+            last_value = dp[len(self.df) - 2][last_action]
+            action_list.append(last_action)
+            for i in range(len(self.df) - 2, 0, -1):
+                price_information = self.df.iloc[i]
+                dn_dp_update = []
+                for j in range(self.action_dim):
+                    position_changed = (
+                        (j - last_action) / scale_factor * self.max_holding_number
+                    )
                     if position_changed > 0:
-                        previous_dp.append(
-                            dp[i - 1][k]
-                            + sell_value(price_information, position_changed)
+                        dn_dp_update.append(
+                            dp[i - 1][j] + sell_value(price_information, position_changed)
                         )
                     else:
-                        previous_dp.append(
-                            dp[i - 1][k]
-                            - buy_value(price_information, -position_changed)
+                        dn_dp_update.append(
+                            dp[i - 1][j] - buy_value(price_information, -position_changed)
                         )
-                dp[i][j] = max(previous_dp)
-        # 现在开始倒着取动作
-        # 最后一个动作是清仓 看倒数第二个动作是怎么来的
-        d1_dp_update = []
-        for k in range(self.action_dim):
-            position_changed = (k - 0) / scale_factor * self.max_holding_number
-            d1_dp_update.append(
-                dp[len(self.df) - 2][k]
-                + sell_value(price_information, position_changed)
-            )
-        last_action = d1_dp_update.index(dp[len(self.df) - 1][0])
-        last_value = dp[len(self.df) - 2][last_action]
-        action_list.append(last_action)
-        for i in range(len(self.df) - 2, 0, -1):
-            price_information = self.df.iloc[i]
-            dn_dp_update = []
-            for j in range(self.action_dim):
-                position_changed = (
-                    (j - last_action) / scale_factor * self.max_holding_number
-                )
-                if position_changed > 0:
-                    dn_dp_update.append(
-                        dp[i - 1][j] + sell_value(price_information, position_changed)
-                    )
-                else:
-                    dn_dp_update.append(
-                        dp[i - 1][j] - buy_value(price_information, -position_changed)
-                    )
-            current_action = dn_dp_update.index(last_value)
-            last_action = current_action
-            last_value = dp[i - 1][last_action]
-            action_list.append(last_action)
-        action_list.reverse()
+                current_action = dn_dp_update.index(last_value)
+                last_action = current_action
+                last_value = dp[i - 1][last_action]
+                action_list.append(last_action)
+            action_list.reverse()
+            # 保存处理结果
+            action_dict = {
+                "action_list": action_list,
+                "transaction_cost_pct": self.transaction_cost_pct,
+                "action_dim": self.action_dim,
+                "max_holding_number": self.max_holding_number
+            }
+            with open(dp_file, 'wb') as f:
+                pickle.dump(action_dict, f)
         return action_list
 
 @ENVIRONMENTS.register_module()
@@ -614,7 +640,7 @@ class MyHighFrequencyTradingTrainingEnvironment(MyHighFrequencyTradingEnvironmen
         #     self.df1 = pd.read_csv(dynamics_test_path, index_col=0)
         # else:
         #     self.df1 = pd.read_csv(self.df_path, index_col=0)
-        self.df = get_df('m2505', self.db_params)
+        self.df, self.dp_md5 = get_df('m2505', self.db_params)
 
         self.action_space = spaces.Discrete(get_attr(self.dataset, "num_action", 11))
         self.observation_space = spaces.Box(

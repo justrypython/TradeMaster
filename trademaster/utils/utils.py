@@ -19,6 +19,7 @@ from collections import OrderedDict
 import matplotlib.pyplot as plt
 import pandas as pd
 import psycopg2
+import hashlib
 
 def set_seed(random_seed):
     random.seed(random_seed)
@@ -599,7 +600,7 @@ def plot_log_trading_decision_on_market(market_features_dict, trading_points, al
         trading_log.to_csv(osp.join(save_dir,f"trading_log_{task}.csv"))
 
 def get_df(symbol, db_params, use_database=False):
-    symbol_path = os.path.join("datas/vnpy_v2/%s.csv")
+    symbol_path = os.path.join("datas/vnpy_v2/%s.csv"%symbol)
     if use_database or not os.path.exists(symbol_path):
         query = """
             SELECT * FROM dbtickdata 
@@ -627,4 +628,12 @@ def get_df(symbol, db_params, use_database=False):
             str(e)
     else:
         df = pd.read_csv(symbol_path)
-    return df
+    md5 = calculate_file_md5(symbol_path)
+    return df, md5
+
+def calculate_file_md5(file_path: str) -> str:
+    md5_hash = hashlib.md5()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):  # 逐块读取，适用于大文件
+            md5_hash.update(chunk)
+    return md5_hash.hexdigest()
