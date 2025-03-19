@@ -1,2 +1,4 @@
 from .environment import HighFrequencyTradingEnvironment
 from .environment import HighFrequencyTradingTrainingEnvironment
+from .environment_v2 import MyHighFrequencyTradingEnvironment
+from .environment_v2 import MyHighFrequencyTradingTrainingEnvironment

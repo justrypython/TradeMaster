@@ -18,6 +18,7 @@ from argparse import Namespace
 from collections import OrderedDict
 import matplotlib.pyplot as plt
 import pandas as pd
+import psycopg2
 
 def set_seed(random_seed):
     random.seed(random_seed)
@@ -597,4 +598,33 @@ def plot_log_trading_decision_on_market(market_features_dict, trading_points, al
         # save the trading_log
         trading_log.to_csv(osp.join(save_dir,f"trading_log_{task}.csv"))
 
+def get_df(symbol, db_params, use_database=False):
+    symbol_path = os.path.join("datas/vnpy_v2/%s.csv")
+    if use_database or not os.path.exists(symbol_path):
+        query = """
+            SELECT * FROM dbtickdata 
+            WHERE symbol = '%s' 
+            ORDER BY datetime DESC;
+        """%symbol
 
+        # 连接数据库并执行查询
+        try:
+            conn = psycopg2.connect(**db_params)
+            df = pd.read_sql(query, conn)
+            conn.close()
+
+            dir_name = os.path.dirname(symbol_path)
+            os.makedirs(dir_name, exist_ok=True)
+            df.to_csv(symbol_path)
+            # 导出到 Excel 文件
+            # excel_path = "./data/dbtickdata_m2505.csv"
+            # # df.to_excel(excel_path, index=False)
+            # df.to_csv(excel_path)
+
+            # 提供文件下载
+            # excel_path
+        except Exception as e:
+            str(e)
+    else:
+        df = pd.read_csv(symbol_path)
+    return df
