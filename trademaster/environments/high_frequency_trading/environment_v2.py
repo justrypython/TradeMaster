@@ -18,6 +18,7 @@ from pathlib import Path
 import pickle
 import os.path as osp
 
+from datetime import datetime
 from tqdm import tqdm
 
 ROOT = str(Path(__file__).resolve().parents[2])
@@ -713,6 +714,13 @@ class MyHighFrequencyTradingTrainingEnvironment(MyHighFrequencyTradingEnvironmen
         previous_price_information = self.data.iloc[-1]
         self.day += 1
         self.data = self.df.iloc[self.day - self.stack_length : self.day]
+        # 判断时候为收盘时间
+        dt = self.data['datetime'].iloc[0]
+        dt = datetime.strptime(dt, '%Y-%m-%d %H:%M:%S.%f')
+        if (dt.hour == 11 and dt.minute == 29) or \
+        (dt.hour == 12 and dt.minute == 59) or \
+        (dt.hour == 10 and dt.minute == 59):
+            self.terminal = True
         current_price_information = self.data.iloc[-1]
         self.state = self.data[self.tech_indicator_list].values
         self.previous_position = previous_position
